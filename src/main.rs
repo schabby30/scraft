@@ -3,23 +3,36 @@ mod data_types;
 mod packets;
 
 use std::net::{TcpListener, TcpStream};
+use data_types::data_types::ServerState;
+
 use crate::data_types::data_types::read_var_int;
-use crate::packets::packets::HandshakePacket;
+use crate::packets::packets::{HandshakePacket, LoginPacket};
 
-fn handle_connection(mut stream: TcpStream) {
-    // read first packet length
-    let (packet_length, _, s) = read_var_int(stream);
-    stream = s;
-    println!("Packet length : {:#?}", packet_length);
+fn handle_connection(mut stream: &mut TcpStream) {
+    print!("Handling connection...");
 
-    // read first packet ID
-    let (packet_id, _, s) = read_var_int(stream);
-    stream = s;
-    println!("Packet ID : {:#?}", packet_id);
+    // set first state to Handshake
+    let mut server_state = ServerState::Handshake;
 
-    match packet_id {
-        0 => HandshakePacket::handle_handshake(stream),
-        _ => panic!("connection failed..."),
+    loop {
+        // read packet length
+        let (packet_length, _) = read_var_int(&mut stream);
+        println!("Packet length : {:#?}", packet_length);
+
+        // read packet ID
+        let (packet_id, _) = read_var_int(&mut stream);
+        println!("Packet ID : {:#?}", packet_id);
+
+        match packet_id {
+            0 => {
+                match server_state {
+                    ServerState::Handshake => server_state = HandshakePacket::handle_handshake(stream),
+                    ServerState::Login => LoginPacket::handle_login(stream),
+                }
+                
+            }
+            _ => break,
+        }
     }
 }
 
@@ -29,8 +42,10 @@ fn main() -> std::io::Result<()> {
     // accept connections and process them serially
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
-                handle_connection(stream);
+            Ok(mut stream) => {
+                /* let mut s = stream.try_clone().unwrap();
+                let s2 = s.borrow_mut(); */
+                handle_connection(&mut stream);
             }
             Err(_e) => {
                 println!("connection failed...");
