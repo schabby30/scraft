@@ -1,6 +1,7 @@
 #[allow(dead_code)]
 mod data_types;
 mod packets;
+pub mod serialize;
 
 use std::net::{TcpListener, TcpStream};
 use data_types::data_types::ServerState;
@@ -17,21 +18,29 @@ fn handle_connection(mut stream: &mut TcpStream) {
     loop {
         // read packet length
         let (packet_length, _) = read_var_int(&mut stream);
-        println!("Packet length : {:#?}", packet_length);
 
-        // read packet ID
-        let (packet_id, _) = read_var_int(&mut stream);
-        println!("Packet ID : {:#?}", packet_id);
+        if packet_length > 0 {
+            println!("Packet length : {:#?}", packet_length);
 
-        match packet_id {
-            0 => {
-                match server_state {
-                    ServerState::Handshake => server_state = HandshakePacket::handle_handshake(stream),
-                    ServerState::Login => LoginPacket::handle_login(stream),
-                }
-                
+            // read packet ID
+            let (packet_id, _) = read_var_int(&mut stream);
+            println!("Packet ID : {:#?}", packet_id);
+
+            match packet_id {
+                0 => {
+                    match server_state {
+                        ServerState::Handshake => server_state = HandshakePacket::handle_handshake(stream),
+                        ServerState::Login => LoginPacket::handle_login(stream),
+                        ServerState::Configuration => todo!(),
+                    }
+                    
+                },
+                3 => {
+                    println!("LOGIN SUCCESSFUL!");
+                    server_state = ServerState::Configuration;
+                },
+                _ => break,
             }
-            _ => break,
         }
     }
 }

@@ -1,7 +1,7 @@
 #[allow(dead_code)]
 pub mod packets {
-    use std::{io::Read, net::TcpStream};
-    use crate::data_types::data_types::{read_var_int, ServerState};
+    use std::{io::{Read, Write}, net::TcpStream};
+    use crate::{data_types::data_types::{read_var_int, write_var_int, Array, ServerState, VarInt}, serialize::serialize::{MinecraftPacketPacket, MinecraftPacketPacketPart}};
 
     #[derive(Debug)]
     pub(crate) struct HandshakePacket {
@@ -15,6 +15,15 @@ pub mod packets {
     pub(crate) struct LoginPacket {
         username: String,
         uuid: u128,
+    }
+
+    #[derive(Debug)]
+    pub(crate) struct LoginSuccessPacket {
+        packet_id: VarInt,
+        uuid: u128,
+        username: String,
+        num_of_properties: VarInt,
+        properties: Array,
     }
 
     impl HandshakePacket {
@@ -96,7 +105,95 @@ pub mod packets {
             }
 
             println!("Login packet : {:#?}", login_packet);
+
+            //
+            // handle LoginSuccess
+            //
+            let login_success_packet = LoginSuccessPacket{
+                packet_id: VarInt(2),
+                username: String::from(login_packet.username),
+                uuid: login_packet.uuid,
+                num_of_properties: VarInt(0),
+                properties: Array::new(),
+            };
+
+            login_success_packet.handle_login_success(stream);
         }
     }
 
+    impl MinecraftPacketPacket for LoginSuccessPacket {
+        fn serialize_minecraft_packet(self: Self, output: &mut Vec<u8>) -> Result<(), &'static str> {
+            let mut tmp: Vec<u8> = Vec::new();
+
+            // serlialize packet id
+            write_var_int(&mut tmp, self.packet_id.0);
+
+            // serlialize UUID
+            let _ = self.uuid.serialize_minecraft_packet_part(&mut tmp);
+
+            // serlialize username
+            let username_in_bytes = self.username.as_bytes();
+            write_var_int(&mut tmp, username_in_bytes.len() as i32);
+            tmp.append(&mut Vec::from(username_in_bytes));
+
+            // serialize num of properties
+            write_var_int(&mut tmp, self.num_of_properties.0);
+
+            // Properties serialization missing
+            
+            // write length of serialized fields to output
+            write_var_int(output, tmp.len() as i32);
+
+            // append serialized fields to output
+            output.append(&mut tmp);
+            
+            Ok(())
+        }
+    }
+
+    impl MinecraftPacketPacketPart for u128 {
+        fn serialize_minecraft_packet_part(self: Self, output: &mut Vec<u8>) -> Result<(), &'static str> {
+            let bytes = self.to_le_bytes();
+
+            output.push(bytes[15]);
+            output.push(bytes[14]);
+            output.push(bytes[13]);
+            output.push(bytes[12]);
+            output.push(bytes[11]);
+            output.push(bytes[10]);
+            output.push(bytes[9]);
+            output.push(bytes[8]);
+            output.push(bytes[7]);
+            output.push(bytes[6]);
+            output.push(bytes[5]);
+            output.push(bytes[4]);
+            output.push(bytes[3]);
+            output.push(bytes[2]);
+            output.push(bytes[1]);
+            output.push(bytes[0]);
+
+            Ok(())
+        }
+    }
+
+    impl MinecraftPacketPacketPart for usize {
+        fn serialize_minecraft_packet_part(self: Self, output: &mut Vec<u8>) -> Result<(), &'static str> {
+            for i in 0..std::mem::size_of::<usize>() {
+                let byte = ((self >> (i * 8)) & 0xFF) as u8;
+                output.push(byte);
+            }
+
+            Ok(())
+        }
+    }
+
+    impl LoginSuccessPacket {
+        pub fn handle_login_success(self, stream: &mut TcpStream) {
+            println!("LoginSuccessPacket : {:#?}", self);
+            let mut output: Vec<u8> = Vec::new(); 
+            let _ = Self::serialize_minecraft_packet(self, &mut output);
+            let _ = stream.write_all(&mut output);
+
+        }
+    }
 }
