@@ -1,13 +1,15 @@
 #[allow(dead_code)]
 mod data_types;
 mod packets;
+mod inbound_packets;
 pub mod serialize;
 
 use std::net::{TcpListener, TcpStream};
-use data_types::data_types::ServerState;
+use data_types::ServerState;
 
-use crate::data_types::data_types::read_var_int;
-use crate::packets::packets::{HandshakePacket, LoginPacket};
+use crate::data_types::read_var_int;
+use crate::inbound_packets::QueryBlockEntityPacket;
+use crate::packets::{FinishConfigurationPacket, HandshakePacket, LoginPacket};
 
 fn handle_connection(mut stream: &mut TcpStream) {
     print!("Handling connection...");
@@ -24,20 +26,28 @@ fn handle_connection(mut stream: &mut TcpStream) {
 
             // read packet ID
             let (packet_id, _) = read_var_int(&mut stream);
-            println!("Packet ID : {:#?}", packet_id);
+            println!("Packet ID : {:#x}", packet_id);
 
             match packet_id {
                 0 => {
                     match server_state {
                         ServerState::Handshake => server_state = HandshakePacket::handle_handshake(stream),
                         ServerState::Login => LoginPacket::handle_login(stream),
-                        ServerState::Configuration => todo!(),
+                        _ => todo!(),
                     }
-                    
+                },
+                1 => {
+                    match server_state {
+                        ServerState::Play => print!("QueryBlockEntityPacket: {:#?}", QueryBlockEntityPacket::handle_query_block_entity(stream)),
+                        _ => todo!(),
+                    }
                 },
                 3 => {
-                    println!("LOGIN SUCCESSFUL!");
-                    server_state = ServerState::Configuration;
+                    println!("LOGIN SUCCESSFUL! .. configuring...");
+                    let finish_configuration_packet = FinishConfigurationPacket::new();
+                    finish_configuration_packet.handle_finish_configuration(stream);
+                    server_state = ServerState::Play;
+                    println!("Finished configuration.");
                 },
                 _ => break,
             }
